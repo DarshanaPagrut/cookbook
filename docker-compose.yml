@@ -1,0 +1,36 @@
+services:
+ 
+  web:
+    build: .
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./app:/app
+    
+    env_file:
+      - .env
+    depends_on:
+      - db
+    networks:
+      - recipe-network
+
+  
+  db:
+    image: mongo:latest
+    ports:
+      - "27017:27017"
+    
+    env_file:
+      - .env
+    volumes:
+      
+      - mongodb_data:/data/db
+    networks:
+      - recipe-network
+
+networks:
+  recipe-network:
+    driver: bridge
+
+volumes:
+  mongodb_data:
