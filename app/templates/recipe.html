@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>{{recipe.title}}</title>
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+
+<body class="bg-gray-100">
+
+<div class="max-w-3xl mx-auto bg-white shadow mt-10 rounded">
+
+<img src="{{recipe.image}}" class="w-full h-72 object-cover">
+
+<div class="p-6">
+
+<h1 class="text-3xl font-bold mb-2">{{recipe.title}}</h1>
+
+<p class="text-gray-600 mb-4">{{recipe.description}}</p>
+
+<p class="font-semibold mb-4">Servings: 2</p>
+
+<h2 class="text-xl font-bold mt-4">Ingredients</h2>
+<p class="whitespace-pre-line">{{recipe.ingredients}}</p>
+
+<h2 class="text-xl font-bold mt-4">Steps</h2>
+<p class="whitespace-pre-line">{{recipe.instructions}}</p>
+
+<h2 class="text-xl font-bold mt-4">Tips</h2>
+<p>{{recipe.tips}}</p>
+
+</div>
+
+</div>
+
+</body>
+</html>
