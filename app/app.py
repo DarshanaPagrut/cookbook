@@ -9,6 +9,9 @@ from bson.objectid import ObjectId
 from dotenv import load_dotenv
 from functools import wraps
 
+from redis_client import redis_client
+import json
+
 load_dotenv()
 
 app = Flask(__name__)
@@ -153,18 +156,32 @@ def logout():
 @token_required
 def index(current_user):
 
-    recipes = list(
-        recipes_collection.find({
-            "user_id": str(current_user["_id"])
-        })
-    )
+    user_id = str(current_user["_id"])
+    cache_key = f"recipes:{user_id}"
 
-    return render_template(
-        "index.html",
-        recipes=recipes,
-        user=current_user
-    )
+    cached = redis_client.get(cache_key)
 
+    if cached:
+        print("CACHE HIT")
+        recipes = json.loads(cached)
+
+    else:
+        print("CACHE MISS")
+
+        recipes = list(recipes_collection.find({
+            "user_id": user_id
+        }))
+
+        for r in recipes:
+            r["_id"] = str(r["_id"])
+
+        redis_client.setex(
+            cache_key,
+            60,
+            json.dumps(recipes)
+        )
+
+    return render_template("index.html", recipes=recipes)
 
 # VIEW RECIPE
 @app.route('/recipe/<id>')
