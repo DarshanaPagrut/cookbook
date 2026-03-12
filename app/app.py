@@ -1,268 +1,205 @@
-import os
-import bcrypt
-import jwt
-import datetime
+"""
+Main Flask application entry point using OOP architecture.
+"""
 
+import os
 from flask import Flask, render_template, request, redirect, url_for
-from database import get_db
-from bson.objectid import ObjectId
 from dotenv import load_dotenv
 from functools import wraps
+from bson.objectid import ObjectId
 
-from redis_client import redis_client
-import json
+from database import Database
+from redis_client import RedisClient
+from auth_service import AuthService
+from recipe_service import RecipeService
+
 
 load_dotenv()
 
-app = Flask(__name__)
-app.secret_key = os.getenv("SECRET_KEY", "dev_secret_key")
 
-db = get_db()
+class RecipeApp:
+    """
+    Main application class that initializes Flask and services.
+    """
 
-recipes_collection = db.recipes
-users_collection = db.users
+    def __init__(self):
+        """Initialize application services."""
 
+        self.app = Flask(__name__)
+        self.app.secret_key = os.getenv("SECRET_KEY", "dev_secret_key")
 
-# JWT AUTH DECORATOR
-def token_required(f):
+        db = Database()
+        redis_client = RedisClient()
 
-    @wraps(f)
-    def decorated(*args, **kwargs):
+        self.users = db.get_users_collection()
+        self.recipes = db.get_recipes_collection()
 
-        token = request.cookies.get("token")
+        self.auth_service = AuthService(self.users, self.app.secret_key)
+        self.recipe_service = RecipeService(self.recipes, redis_client)
 
-        if not token:
-            return redirect(url_for("login_page"))
+        self.register_routes()
 
-        try:
-            data = jwt.decode(
-                token,
-                app.secret_key,
-                algorithms=["HS256"]
-            )
+    def token_required(self, f):
+        """JWT authentication decorator."""
 
-            current_user = users_collection.find_one(
-                {"_id": ObjectId(data["user_id"])}
-            )
+        @wraps(f)
+        def decorated(*args, **kwargs):
 
-            if not current_user:
+            token = request.cookies.get("token")
+
+            if not token:
                 return redirect(url_for("login_page"))
 
-        except jwt.ExpiredSignatureError:
-            return redirect(url_for("login_page"))
+            user = self.auth_service.verify_token(token)
 
-        except jwt.InvalidTokenError:
-            return redirect(url_for("login_page"))
+            if not user:
+                return redirect(url_for("login_page"))
 
-        return f(current_user, *args, **kwargs)
+            return f(user, *args, **kwargs)
 
-    return decorated
+        return decorated
 
+    def register_routes(self):
+        """Register Flask routes."""
 
-# LANDING PAGE
-@app.route('/')
-def landing():
-    return render_template("landing.html")
+        app = self.app
 
+        @app.route("/")
+        def landing():
+            return render_template("landing.html")
 
-# REGISTER
-@app.route('/register', methods=["GET", "POST"])
-def register():
+        @app.route("/register", methods=["GET", "POST"])
+        def register():
 
-    if request.method == "POST":
+            if request.method == "POST":
 
-        username = request.form["username"]
-        email = request.form["email"]
-        password = request.form["password"]
+                user_id = self.auth_service.register_user(
+                    request.form["username"],
+                    request.form["email"],
+                    request.form["password"]
+                )
 
-        existing_user = users_collection.find_one({"email": email})
+                if not user_id:
+                    return "User already exists"
 
-        if existing_user:
-            return "User already exists"
+                return redirect(url_for("login_page"))
 
-        hashed = bcrypt.hashpw(
-            password.encode('utf-8'),
-            bcrypt.gensalt()
-        )
+            return render_template("register.html")
 
-        users_collection.insert_one({
-            "username": username,
-            "email": email,
-            "password": hashed
-        })
+        @app.route("/login", methods=["GET", "POST"])
+        def login_page():
 
-        return redirect(url_for("login_page"))
+            if request.method == "POST":
 
-    return render_template("register.html")
+                token = self.auth_service.login_user(
+                    request.form["email"],
+                    request.form["password"]
+                )
 
+                if not token:
+                    return "Invalid credentials"
 
-# LOGIN
-@app.route('/login', methods=["GET", "POST"])
-def login_page():
+                response = redirect(url_for("index"))
+                response.set_cookie("token", token, httponly=True, samesite="Lax")
 
-    if request.method == "POST":
+                return response
 
-        email = request.form["email"]
-        password = request.form["password"]
+            return render_template("login.html")
 
-        user = users_collection.find_one({"email": email})
+        @app.route("/home")
+        @self.token_required
+        def index(current_user):
 
-        if not user:
-            return "User not found"
-
-        if bcrypt.checkpw(
-            password.encode('utf-8'),
-            user["password"]
-        ):
-
-            token = jwt.encode(
-                {
-                    "user_id": str(user["_id"]),
-                    "exp": datetime.datetime.utcnow() + datetime.timedelta(hours=24)
-                },
-                app.secret_key,
-                algorithm="HS256"
+            recipes = self.recipe_service.get_user_recipes(
+                str(current_user["_id"])
             )
 
-            response = redirect(url_for("index"))
+            return render_template("index.html", recipes=recipes)
 
-            response.set_cookie(
-                "token",
-                token,
-                httponly=True,
-                samesite="Lax"
+        # CREATE RECIPE
+        @app.route("/create-recipe", methods=["POST"])
+        @self.token_required
+        def create_recipe(current_user):
+
+            recipe = {
+                "title": request.form.get("title"),
+                "image": request.form.get("image"),
+                "description": request.form.get("description"),
+                "ingredients": request.form.get("ingredients"),
+                "instructions": request.form.get("instructions"),
+                "tips": request.form.get("tips"),
+                "servings": 2
+            }
+
+            self.recipe_service.create_recipe(
+                recipe,
+                str(current_user["_id"])
             )
 
-            return response
+            return redirect(url_for("index"))
 
-        else:
-            return "Invalid password"
+        # DELETE RECIPE
+        @app.route("/delete/<id>", methods=["POST"])
+        @self.token_required
+        def delete_recipe(current_user, id):
 
-    return render_template("login.html")
+            self.recipe_service.delete_recipe(
+                id,
+                str(current_user["_id"])
+            )
 
+            return redirect(url_for("index"))
 
-# LOGOUT
-@app.route("/logout")
-def logout():
+        # EDIT RECIPE
+        @app.route("/edit/<id>", methods=["GET", "POST"])
+        @self.token_required
+        def edit_recipe(current_user, id):
 
-    response = redirect(url_for("landing"))
-    response.delete_cookie("token")
+            recipe = self.recipes.find_one({
+                "_id": ObjectId(id),
+                "user_id": str(current_user["_id"])
+            })
 
-    return response
+            if not recipe:
+                return redirect(url_for("index"))
 
+            if request.method == "POST":
 
-# USER HOME
-@app.route('/home')
-@token_required
-def index(current_user):
+                updated = {
+                    "title": request.form.get("title"),
+                    "image": request.form.get("image"),
+                    "description": request.form.get("description"),
+                    "ingredients": request.form.get("ingredients"),
+                    "instructions": request.form.get("instructions"),
+                    "tips": request.form.get("tips")
+                }
 
-    user_id = str(current_user["_id"])
-    cache_key = f"recipes:{user_id}"
+                self.recipe_service.update_recipe(
+                    id,
+                    updated,
+                    str(current_user["_id"])
+                )
 
-    cached = redis_client.get(cache_key)
+                return redirect(url_for("index"))
 
-    if cached:
-        print("CACHE HIT")
-        recipes = json.loads(cached)
+            return render_template("edit_recipe.html", recipe=recipe)
 
-    else:
-        print("CACHE MISS")
+        # VIEW RECIPE
+        @app.route("/recipe/<id>")
+        @self.token_required
+        def recipe(current_user, id):
 
-        recipes = list(recipes_collection.find({
-            "user_id": user_id
-        }))
+            recipe = self.recipes.find_one({
+                "_id": ObjectId(id),
+                "user_id": str(current_user["_id"])
+            })
 
-        for r in recipes:
-            r["_id"] = str(r["_id"])
+            return render_template("recipe.html", recipe=recipe)
 
-        redis_client.setex(
-            cache_key,
-            60,
-            json.dumps(recipes)
-        )
-
-    return render_template("index.html", recipes=recipes)
-
-# VIEW RECIPE
-@app.route('/recipe/<id>')
-@token_required
-def recipe(current_user, id):
-
-    recipe = recipes_collection.find_one({
-        "_id": ObjectId(id),
-        "user_id": str(current_user["_id"])
-    })
-
-    return render_template("recipe.html", recipe=recipe)
-
-
-# CREATE RECIPE
-@app.route('/create-recipe', methods=['POST'])
-@token_required
-def create_recipe(current_user):
-
-    recipe = {
-        "title": request.form.get("title"),
-        "image": request.form.get("image"),
-        "description": request.form.get("description"),
-        "ingredients": request.form.get("ingredients"),
-        "instructions": request.form.get("instructions"),
-        "tips": request.form.get("tips"),
-        "servings": 2,
-        "user_id": str(current_user["_id"])
-    }
-
-    recipes_collection.insert_one(recipe)
-
-    return redirect(url_for("index"))
-
-
-# DELETE RECIPE
-@app.route('/delete/<id>', methods=["POST"])
-@token_required
-def delete_recipe(current_user, id):
-
-    recipes_collection.delete_one({
-        "_id": ObjectId(id),
-        "user_id": str(current_user["_id"])
-    })
-
-    return redirect(url_for("index"))
-
-
-# EDIT RECIPE
-@app.route('/edit/<id>', methods=["GET", "POST"])
-@token_required
-def edit_recipe(current_user, id):
-
-    recipe = recipes_collection.find_one({
-        "_id": ObjectId(id),
-        "user_id": str(current_user["_id"])
-    })
-
-    if not recipe:
-        return redirect(url_for("index"))
-
-    if request.method == "POST":
-
-        updated = {
-            "title": request.form.get("title"),
-            "image": request.form.get("image"),
-            "description": request.form.get("description"),
-            "ingredients": request.form.get("ingredients"),
-            "instructions": request.form.get("instructions"),
-            "tips": request.form.get("tips")
-        }
-
-        recipes_collection.update_one(
-            {"_id": ObjectId(id)},
-            {"$set": updated}
-        )
-
-        return redirect(url_for("index"))
-
-    return render_template("edit_recipe.html", recipe=recipe)
+    def run(self):
+        """Run the Flask application."""
+        self.app.run(host="0.0.0.0", port=5000, debug=False)
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    RecipeApp().run()
