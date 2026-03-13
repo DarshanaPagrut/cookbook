@@ -76,9 +76,14 @@ d="M21 12.79A9 9 0 1111.21 3c0 .34 0 .67.05 1A7 7 0 0021 12.79z"/> </svg>
 
 </button>
 
-<!-- PROFILE -->
+<!-- PROFILE DROPDOWN -->
 
-<button class="bg-white dark:bg-gray-700 p-2 rounded-full">
+<div class="relative">
+
+<!-- PROFILE BUTTON -->
+
+<button onclick="toggleProfileMenu()" 
+class="bg-white dark:bg-gray-700 p-2 rounded-full shadow">
 
 <svg xmlns="http://www.w3.org/2000/svg"
 class="w-6 h-6 text-gray-800 dark:text-white"
@@ -90,6 +95,31 @@ d="M5.121 17.804A8 8 0 1118.879 17.804M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
 </svg>
 
 </button>
+
+<!-- DROPDOWN MENU -->
+
+<div id="profileMenu"
+class="hidden absolute right-0 mt-2 w-40 bg-white dark:bg-gray-800 rounded-lg shadow-lg border dark:border-gray-700">
+
+<a href="/profile"
+class="block px-4 py-2 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700">
+View Profile </a>
+
+<a href="/logout"
+class="block px-4 py-2 text-red-500 hover:bg-gray-100 dark:hover:bg-gray-700">
+Logout </a>
+
+</div>
+
+</div>
+
+<script>
+function toggleProfileMenu() {
+const menu = document.getElementById("profileMenu");
+menu.classList.toggle("hidden");
+}
+</script>
+
 
 </div>
 </div>
@@ -207,3 +237,4 @@ Delete
 
 </body>
 </html>
+
