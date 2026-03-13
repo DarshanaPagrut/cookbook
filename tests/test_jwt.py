@@ -23,3 +23,4 @@ def test_expired_token(client, app):
 
     # Should redirect to login
     assert response.status_code == 302
+    

@@ -33,3 +33,4 @@ def test_login_user(client):
     })
 
     assert response.status_code == 302
+    

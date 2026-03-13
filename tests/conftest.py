@@ -22,3 +22,4 @@ def client(app):
     Flask test client.
     """
     return app.test_client()
+    

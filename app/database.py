@@ -39,3 +39,5 @@ class Database:
     def get_recipes_collection(self):
         """Return recipes collection."""
         return self.db.recipes
+
+        

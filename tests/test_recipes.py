@@ -74,3 +74,4 @@ def test_delete_recipe_route_exists(logged_in_client):
     response = logged_in_client.post("/delete/123456789012345678901234")
 
     assert response.status_code in (302, 200)
+    

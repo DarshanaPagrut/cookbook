@@ -62,3 +62,5 @@ class RecipeService:
         )
 
         self.redis.delete(f"recipes:{user_id}")
+
+        

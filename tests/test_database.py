@@ -20,3 +20,4 @@ def test_recipe_insert_and_fetch(logged_in_client):
 
     assert response.status_code == 200
     assert b"DB Test Recipe" in response.data
+    

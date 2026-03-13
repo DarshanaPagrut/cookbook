@@ -36,3 +36,5 @@ class RedisClient:
     def delete(self, key):
         """Delete Redis key."""
         self.client.delete(key)
+
+        
